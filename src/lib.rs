@@ -49,9 +49,7 @@ pub fn get_mimic_voices() -> Vec<String> {
 
     String::from_utf8(output.stdout)
         .unwrap()
-        .split(": ")
-        .skip(1)
-        .next()
+        .split(": ").nth(1)
         .unwrap()
         .split(' ')
         .filter(|s| !s.is_empty())
@@ -91,7 +89,7 @@ pub fn rhvoice_tts(filename: &str, voice: &str, text: &str) {
         .arg(filename)
         .spawn()
         .unwrap();
-    let input = format!("{}", text);
+    let input = text.to_string();
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     std::thread::spawn(move || {
         stdin
@@ -113,9 +111,7 @@ pub fn get_espeak_voices() -> Vec<String> {
         .skip(1)
         .filter_map(|line| {
             line.split(' ')
-                .filter(|s| !s.is_empty())
-                .skip(4)
-                .next()
+                .filter(|s| !s.is_empty()).nth(4)
                 .map(ToString::to_string)
         })
         .collect()
@@ -130,7 +126,7 @@ pub fn espeak_tts(filename: &str, voice: &str, text: &str) {
         .arg(filename)
         .spawn()
         .unwrap();
-    let input = format!("{}", text);
+    let input = text.to_string();
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     std::thread::spawn(move || {
         stdin
@@ -158,7 +154,7 @@ pub fn get_festival_voices() -> Vec<String> {
     let output = child.wait_with_output().expect("failed to wait on child");
 
     let output = String::from_utf8(output.stdout).unwrap();
-    println!("{}", output);
+    println!("{output}");
     output[1..(output.len() - 2)]
         .split(' ')
         .map(|s| s.to_string())
@@ -173,7 +169,7 @@ pub fn festival_tts(filename: &str, voice: &str, text: &str) {
         //.stdout(Stdio::piped())
         .spawn()
         .unwrap();
-    let input = format!("(voice_{}) (tts_textall \"{}\" nil)\n", voice, text);
+    let input = format!("(voice_{voice}) (tts_textall \"{text}\" nil)\n");
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     //let stdout = child.stdout.take().expect("Failed to open stdout");
     //festival_stdout(stdout);
@@ -189,8 +185,8 @@ pub fn festival_tts(filename: &str, voice: &str, text: &str) {
 fn festival_stdout(stdout: ChildStdout) {
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines().map(|l| l.unwrap());
-    while let Some(line) = lines.next() {
-      println!("Festival: {}", line);
+    for line in lines.by_ref() {
+      println!("Festival: {line}");
       if line.contains("Festival server started") {
         break;
       } else if line.contains("bind failed") {
@@ -199,7 +195,7 @@ fn festival_stdout(stdout: ChildStdout) {
     }
     std::thread::spawn(move || {
       for line in lines {
-        println!("Festival: {}", line);
+        println!("Festival: {line}");
       }
     });
 
@@ -267,7 +263,7 @@ impl RansomTTS {
         for (word, id) in &unique_words {
             let voice_id = word.chars().map(|c| c as usize).sum::<usize>() % self.voices.len();
             let (tts, voice) = &self.voices[voice_id];
-            let filename = format!("wav/{}.wav", id);
+            let filename = format!("wav/{id}.wav");
             match tts {
                 TTS::Festival => festival_tts(&filename, voice, word),
                 TTS::Espeak => espeak_tts(&filename, voice, word),
@@ -290,7 +286,7 @@ impl RansomTTS {
 
         let csound = Csound::new();
         csound.set_output("output.wav", "wav", "NULL").unwrap();
-        csound.message_string_callback(|mtype, message| println!("{:?}: {}", mtype, message));
+        csound.message_string_callback(|mtype, message| println!("{mtype:?}: {message}"));
         csound.compile_orc(include_str!("word.orc")).unwrap();
         let mut score = String::new();
         score += include_str!("header.sco");
@@ -299,7 +295,7 @@ impl RansomTTS {
         for word in words.iter() {
             let pitch = word.chars().map(|c| c as u32).sum::<u32>() as f32 / (word.len() as f32) / ('m' as u32 as f32);
             if let Some((fid, time)) = word_map.get(word) {
-                println!("{}: {}", word, fid);
+                println!("{word}: {fid}");
                 score += &format!(
                     include_str!("word.sco"),
                     beat = beat,
@@ -312,15 +308,15 @@ impl RansomTTS {
             } else if let Some(id) = unique_words.get(word) {
                 let fid = id + 2;
                 let length = (word.len() as f32).sqrt();
-                let start = ((pitch * 500.0 * length as f32) as u32) % 2000;
-                let mid = ((pitch * 2777.0 * length as f32) as u32) % 2000;
-                let end = ((pitch.sqrt() * 24885.0 * length as f32) as u32) % 2000;
-                score += &format!("i3 {} {} {} {} {} {}\n", beat, length, fid, start, mid, end);
+                let start = ((pitch * 500.0 * length) as u32) % 2000;
+                let mid = ((pitch * 2777.0 * length) as u32) % 2000;
+                let end = ((pitch.sqrt() * 24885.0 * length) as u32) % 2000;
+                score += &format!("i3 {beat} {length} {fid} {start} {mid} {end}\n");
                 beat += length;
             }
         }
         score += "e";
-        println!("{}", score);
+        println!("{score}");
         csound.read_score(&score).unwrap();
         csound.start().unwrap();
         csound.perform();
